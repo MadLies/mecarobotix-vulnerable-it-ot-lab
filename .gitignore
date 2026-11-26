@@ -1,0 +1,13 @@
+mecarobotix-lab/data/maintenance/backups/*# build artifacts
+*.o
+*.d
+*.elf.map
+build/
+target/
+work/
+db/
+incremental_db/
+output_files/
+transcript
+._*
+.DS_Store

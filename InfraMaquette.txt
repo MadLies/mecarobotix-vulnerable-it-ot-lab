@@ -1,0 +1,158 @@
+Vulnerable design:
+
+                         Internet / External Robots (10.10.3.0/24) / Remote employees
+                                                   |
+                                                   |
+                                            [firewall-router]
+                                          NAT / port forwarding
+                                                   |
+                                   ----------------------------------------
+                                   |                                      |
+                             Updates network                     Internal flat network
+                              10.10.2.0/24                           10.10.1.0/24
+                                   |                                      |
+                    ----------------                        -----------+------------+--------+------
+                    |                                       |          |            |        |     |
+                    |                                       |          |            |        |     |
+        [diagnostic-server]                              [Users]   [Identity]   [DEV/CI]   [IT]   [OT]
+          - Public diagnostic API                           |          |            |        |     |
+          - Robot updates                                   |          |            |        |     |
+          - Telemetry intake                                |          |            |        |     |
+                    |                                       |          |            |        |     |
+                    |                                       |          |            |        |     |
+                    ----------------------------------------+----------+------------+--------+------
+
+
+Internal flat network
+|
++-- User machines / employee hosts
+|
++-- Identity / admin services
+|    |
+|    +-- [ldap-server] 10.10.1.10
+|    |
+|    +-- [phpldapamin] 10.10.1.11
+|    |
+|    +-- [dns-server] 10.10.1.12
+|
++-- Development / deployment services
+|    |
+|    +-- [devops-server] 10.10.1.20
+|    |
+|    +-- [ci-server] 10.10.1.21
+|    |
+|    +-- [artifact-registry] 10.10.1.23
+|
++-- IT: Data / logging / backup
+|    |
+|    +-- [it-services] 10.10.1.30
+|    |
+|    +-- [db-internal] 10.10.1.31
+|    |
+|    +-- [backup-log-server] 10.10.1.33
+|
++-- OT services
+|    |
+|    +-- [ot-supervision] 10.10.1.40
+|    |
+|    +-- [ot-maintenance] 10.10.1.41
+|    |
+|    +-- Internal robots
+|        |
+|        +-- [robot-a-01] 10.10.1.50
+|        +-- [robot-a-02] 10.10.1.51
+|        +-- [robot-b-01] 10.10.1.52
+|
++-- hacking-intranet-server 
+    10.10.1.100
+
+
+
+Design proposal, network segmentation:
+
+                         Internet / External Robots (10.10.3.0/24) / Remote employees
+                                                   |
+                                                   |
+                                             [firewall-ext]
+                                                   |
+                                                   |
+                                                  DMZ
+                                             10.10.10.0/24
+                                                   |
+                                 [VPN Gateway]-----+-----[diagnostic-server]
+                                 10.10.200.0/24    |
+                                                   |
+                                                   |
+                   ----------------+---------[firewall-int]-------+---------------
+                   |               |               |              |              |
+                   |               |               |              |              |
+                [Users]        [Identity]      [DEV/CI]          [IT]           [OT]
+            10.10.100.0/24   10.10.20.0/24   10.10.30.0/24   10.10.40.0/24  10.10.50.0/24
+
+DMZ 10.10.10.0/24
+    firewall-int             10.10.10.1
+    firewall-ext             10.10.10.2
+    diagnostic-server        10.10.10.3
+    vpn-gateway              10.10.10.4
+
+Identity 10.10.20.0/24
+    firewall-int             10.10.20.1
+    dns-server               10.10.20.2
+    ldap-server              10.10.20.3
+    phpldapadmin             10.10.20.4
+
+DEV/CI 10.10.30.0/24
+    firewall-int             10.10.30.1
+    devops-server            10.10.30.2
+    artifact-registry        10.10.30.3
+    ci-server                10.10.30.4
+
+IT 10.10.40.0/24
+    firewall-int             10.10.40.1
+    it-services              10.10.40.2
+    db-internal              10.10.40.3
+    backup-log-server        10.10.40.4
+
+OT 10.10.50.0/24
+    firewall-int             10.10.50.1
+    ot-supervision           10.10.50.2
+    ot-maintenance           10.10.50.3
+    robot-a-01               10.10.50.101
+    robot-a-02               10.10.50.102
+    robot-b-01               10.10.50.103
+
+Users 10.10.100.0/24
+    firewall-int             10.10.100.1
+    hacking-intranet-server  10.10.100.2
+
+VPN pool 10.10.200.0/24
+
+
+(*) One-run services:
+pki-init           10.10.20.201 (identity_net)
+gitea-init         10.10.30.201 (dev_net)
+db-sensitive-init  10.10.40.201 (it_net)
+
+
+
+
+
+External firewall rules (not stateful, DROP by default):
+- Allows communication between client-robots and diagnostic server
+
+
+Internal firewall rules (stateful, DROP by default):
+DMZ network:
+  - diagnostic-server sees db-internal, artifact-registry
+  - diagnostic-server sees internal robots
+
+Identity network:
+  - DNS and LDAP visible by all
+  - phpldapadmin only visible by IT
+
+DEV/CI:
+  - ci-server visible by internal robots
+
+IT:
+  - backup-log-server visible by all except users network
+  - it-services visible by all

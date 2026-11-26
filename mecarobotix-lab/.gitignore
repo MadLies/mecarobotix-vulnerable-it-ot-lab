@@ -1,0 +1,5 @@
+data/pki/ca/*
+data/pki/services/*
+data/pki/clients/*
+
+!data/pki/README.md

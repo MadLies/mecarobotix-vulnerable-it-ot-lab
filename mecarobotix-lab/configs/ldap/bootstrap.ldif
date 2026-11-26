@@ -1,0 +1,283 @@
+dn: dc=mecarobotix,dc=local
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: MecaRobotix
+dc: mecarobotix
+
+dn: ou=people,dc=mecarobotix,dc=local
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=mecarobotix,dc=local
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=services,dc=mecarobotix,dc=local
+objectClass: organizationalUnit
+ou: services
+
+dn: ou=robots,dc=mecarobotix,dc=local
+objectClass: organizationalUnit
+ou: robots
+
+dn: uid=svc_nss_bind,ou=services,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+cn: NSS Bind Service
+sn: Service
+uid: svc_nss_bind
+userPassword: fo5gU74Q
+description: Read-only bind account used by SSSD/NSS/PAM clients
+
+dn: uid=dev01,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Dev One
+sn: One
+uid: dev01
+uidNumber: 1001
+gidNumber: 1001
+homeDirectory: /home/dev01
+loginShell: /bin/bash
+userPassword: YenyHnqb86kJ
+mail: dev01@mecarobotix.com
+
+dn: uid=dev02,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Dev Two
+sn: Two
+uid: dev02
+uidNumber: 1002
+gidNumber: 1001
+homeDirectory: /home/dev02
+loginShell: /bin/bash
+userPassword: 2T3xHh46n9xl
+mail: dev02@mecarobotix.com
+
+dn: uid=meca01,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Meca One
+sn: One
+uid: meca01
+uidNumber: 1003
+gidNumber: 1002
+homeDirectory: /home/meca01
+loginShell: /bin/bash
+userPassword: Di5U0E3LX8wx
+mail: meca01@mecarobotix.com
+
+dn: uid=tech01,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Tech One
+sn: One
+uid: tech01
+uidNumber: 1004
+gidNumber: 1003
+homeDirectory: /home/tech01
+loginShell: /bin/bash
+userPassword: wTeKO48pKHf0
+mail: tech01@mecarobotix.com
+
+dn: uid=tech02,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Tech Two
+sn: Two
+uid: tech02
+uidNumber: 1005
+gidNumber: 1003
+homeDirectory: /home/tech02
+loginShell: /bin/bash
+userPassword: QRe8R06Jafzp
+mail: tech02@mecarobotix.com
+
+dn: uid=itadmin01,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: IT Admin One
+sn: One
+uid: itadmin01
+uidNumber: 1006
+gidNumber: 1004
+homeDirectory: /home/itadmin01
+loginShell: /bin/bash
+userPassword: U3Bkwb8HrM5d
+mail: itadmin01@mecarobotix.com
+
+dn: uid=itadmin02,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: IT Admin Two
+sn: Two
+uid: itadmin02
+uidNumber: 1007
+gidNumber: 1004
+homeDirectory: /home/itadmin02
+loginShell: /bin/bash
+userPassword: o15q54B2URwA
+mail: itadmin02@mecarobotix.com
+
+dn: uid=admin01,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Admin One
+sn: One
+uid: admin01
+uidNumber: 1008
+gidNumber: 1005
+homeDirectory: /home/admin01
+loginShell: /bin/bash
+userPassword: avIYl2r8Cnth
+mail: admin01@mecarobotix.com
+
+dn: uid=sec01,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: Security One
+sn: One
+uid: sec01
+uidNumber: 1009
+gidNumber: 1006
+homeDirectory: /home/sec01
+loginShell: /bin/bash
+userPassword: jd52WR99TVA6
+mail: sec01@mecarobotix.com
+
+dn: uid=svc_ci_robot_deploy,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+cn: CI Robot Deploy Service
+sn: Service
+uid: svc_ci_robot_deploy
+userPassword: SvcPassword123!
+
+dn: uid=svc_diagnostic_api,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+cn: Diagnostic API Service
+sn: Service
+uid: svc_diagnostic_api
+userPassword: SvcPassword123!
+
+dn: uid=svc_robot_sync,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+cn: Robot Sync Service
+sn: Service
+uid: svc_robot_sync
+userPassword: SvcPassword123!
+
+dn: uid=svc_backup,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+cn: Backup Service
+sn: Service
+uid: svc_backup
+userPassword: SvcPassword123!
+
+dn: uid=svc_ldap_bind,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+cn: LDAP Bind Service
+sn: Service
+uid: svc_ldap_bind
+userPassword: SvcPassword123!
+
+dn: uid=svc_logs,ou=people,dc=mecarobotix,dc=local
+objectClass: inetOrgPerson
+cn: Logs Service
+sn: Service
+uid: svc_logs
+userPassword: SvcPassword123!
+
+dn: cn=developers,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: developers
+gidNumber: 1001
+memberUid: dev01
+memberUid: dev02
+
+dn: cn=mechatronics,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: mechatronics
+gidNumber: 1002
+memberUid: meca01
+
+dn: cn=technicians,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: technicians
+gidNumber: 1003
+memberUid: tech01
+memberUid: tech02
+
+dn: cn=it_admins,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: it_admins
+gidNumber: 1004
+memberUid: itadmin01
+memberUid: itadmin02
+
+dn: cn=administrative,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: administrative
+gidNumber: 1005
+memberUid: admin01
+
+dn: cn=security_team,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: security_team
+gidNumber: 1006
+memberUid: sec01
+
+dn: cn=service_accounts,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: service_accounts
+gidNumber: 1007
+memberUid: svc_ci_robot_deploy
+memberUid: svc_diagnostic_api
+memberUid: svc_robot_sync
+memberUid: svc_backup
+memberUid: svc_ldap_bind
+memberUid: svc_logs
+memberUid: svc_nss_bind
+
+dn: cn=robot_admins,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: robot_admins
+gidNumber: 1101
+memberUid: tech01
+memberUid: tech02
+memberUid: svc_ci_robot_deploy
+
+dn: cn=ci_users,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: ci_users
+gidNumber: 1102
+memberUid: dev01
+memberUid: dev02
+memberUid: svc_ci_robot_deploy
+
+dn: cn=ot_users,ou=groups,dc=mecarobotix,dc=local
+objectClass: top
+objectClass: posixGroup
+cn: ot_users
+gidNumber: 1103
+memberUid: tech01
+memberUid: tech02
+memberUid: svc_ci_robot_deploy

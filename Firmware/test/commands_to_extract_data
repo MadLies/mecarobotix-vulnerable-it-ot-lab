@@ -1,0 +1,85 @@
+# Extract Files
+
+dd if=esp32_flash_dump.bin of=partitions_from_dump.bin bs=1 skip=$((0x8000)) count=$((0x1000)) 
+4096+0 records in
+4096+0 records out
+4096 bytes (4.1 kB, 4.0 KiB) copied, 0.0177918 s, 230 kB/skip
+
+
+ python ~/.platformio/packages/framework-arduinoespressif32/tools/gen_esp32part.py partitions_from_dump.bin 
+Parsing binary partition input...
+Verifying table...
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,20K,
+otadata,data,ota,0xe000,8K,
+app0,app,ota_0,0x10000,1280K,
+app1,app,ota_1,0x150000,1280K,
+spiffs,data,spiffs,0x290000,1408K,
+coredump,data,coredump,0x3f0000,64K,
+
+dd if=esp32_flash_dump.bin of=fs_from_dump.bin bs=1 skip=$((0x290000)) count=$((0x1441792)) 
+1441792+0 records in
+1441792+0 records out
+1441792 bytes (1.4 MB, 1.4 MiB) copied, 6.48401 s, 222 kB/s
+
+~/.platformio/packages/tool-mklittlefs/mklittlefs  -u ./extracted -s 1441792 -b 4096 -p 256  fs_from_dump.bin 
+Directory ./extracted/ does not exists. Try to create it.
+diagnostic-server/.gdb_history	> ./extracted/diagnostic-server/.gdb_history	size: 335 Bytes
+diagnostic-server/Dockerfile	> ./extracted/diagnostic-server/Dockerfile	size: 421 Bytes
+diagnostic-server/app.c	> ./extracted/diagnostic-server/app.c	size: 12916 Bytes
+diagnostic-server/app	> ./extracted/diagnostic-server/app	size: 33088 Bytes
+diagnostic-server/docker-entrypoint.sh	> ./extracted/diagnostic-server/docker-entrypoint.sh	size: 779 Bytes
+
+# Extract the source code 
+
+dd if=esp32_flash_dump.bin of=app0.bin bs=1 skip=$((0x10000)) count=$((0x140000))
+
+ python -m esptool --chip esp32 image_info app0.bin 
+Warning: Deprecated: Command 'image_info' is deprecated. Use 'image-info' instead.
+esptool v5.2.0
+Image size: 1310720 bytes
+
+ESP32 Image Header
+==================
+Image version: 1
+Entry point: 0x40082cb0
+Segments: 5
+Flash size: 4MB
+Flash freq: 40m
+Flash mode: DIO
+
+ESP32 Extended Image Header
+===========================
+WP pin: 0xee (disabled)
+Flash pins drive settings: clk_drv: 0x0, q_drv: 0x0, d_drv: 0x0, cs0_drv: 0x0, hd_drv: 0x0, wp_drv: 0x0
+Chip ID: 0 (ESP32)
+Minimal chip revision: v0.0, (legacy min_rev = 0)
+Maximal chip revision: v655.35
+
+Segments Information
+====================
+Segment   Length   Load addr   File offs  Memory types
+-------  -------  ----------  ----------  ------------
+      0  0x272e4  0x3f400020  0x00000018  DROM
+      1  0x06498  0x3ffbdb60  0x00027304  BYTE_ACCESSIBLE, DRAM
+      2  0x0286c  0x40080000  0x0002d7a4  IRAM
+      3  0xa905c  0x400d0020  0x00030018  IROM
+      4  0x120b4  0x4008286c  0x000d907c  IRAM
+
+ESP32 Image Footer
+==================
+Checksum: 0xa9 (valid)
+Validation hash: 0a609b9ce78a740a9bb75a2831b741d51cca517c7616993799b68500d6e93f6c (valid)
+
+Application Information
+=======================
+Project name: arduino-lib-builder
+App version: esp-idf: v4.4.7 38eeba213a
+Compile time: Mar  5 2024 12:36:24
+ELF file SHA256: a4ed7b05eed4ab93001aeb33327cc44ef8c95ee414f86034131d4efe4a68e55f
+ESP-IDF: v4.4.7-dirty
+Minimal eFuse block revision: 0.0
+Maximal eFuse block revision: 0.0
+Secure version: 0
+

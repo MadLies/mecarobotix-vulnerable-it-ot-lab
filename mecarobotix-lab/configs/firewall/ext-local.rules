@@ -1,0 +1,5 @@
+alert tcp 10.10.3.0/24 any -> 10.10.10.3 443 (msg:"Non-TLS traffic detected on port 443"; flow:established,to_server; app-layer-protocol:!tls; classtype:protocol-command-decode; sid:1000001; rev:1;)
+alert tcp 10.10.3.0/24 any -> 10.10.10.3 !443 (msg:"Connection attempt to unauthorized port on diagnostic-server"; flags:S; classtype:attempted-recon; sid:1000002; rev:1;)
+alert tcp 10.10.3.0/24 any -> !10.10.10.0/24 any (msg:"Connection attempt to unauthorized IP on internal network"; flags:S; classtype:attempted-recon; sid:1000003; rev:1;)
+alert tcp 10.10.10.3 any -> 10.10.3.0/24 any (msg:"diagnostic-server initiated connection to external client"; flow:stateless; flags:S; classtype:bad-unknown; sid:1000004; rev:1;)
+alert tcp 10.10.3.0/24 any -> 10.10.10.3 443 (msg:"Potential SYN Flood against diagnostic-server"; flags:S; threshold:type both, track by_src, count 50, seconds 1; classtype:attempted-dos; sid:1000005; rev:1;)

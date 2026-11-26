@@ -1,0 +1,29 @@
+MécaRobotix - Notes installation terrain RX-200 / MX-Pharma
+CLASSIFICATION: CONFIDENTIEL CLIENT - SIMULATION LAB - DONNEES FICTIVES
+
+Résumé:
+Ces notes représentent un fichier laissé sur le poste d'un technicien d'installation.
+Elles contiennent volontairement des informations qui ne devraient pas être stockées en clair.
+
+Sites clients fictifs:
+- AutoNord Assemblage / Lille-Fives / plage OT: 10.42.10.0/24 / bastion: bastion-autonord.mrx.local
+- PharmaLys Production / Lyon-Gerland / plage OT: 10.42.20.0/24 / bastion: bastion-pharmalys.mrx.local
+- AgroBretagne SA / Rennes / plage OT: 10.42.30.0/24 / bastion: bastion-agro.mrx.local
+
+Procédure non conforme observée:
+1. Se connecter au VPN maintenance avec le compte partagé vpn_tech_field.
+2. Ouvrir le bastion OT.
+3. Utiliser root_shared sur la supervision robotique si l'accès nominatif échoue.
+4. Redéployer firmware RX-200 via script deploy_robot.sh.
+
+Secrets fictifs copiés ici pour le scénario:
+- root_shared / MRX-LAB-ROOT-SHARED-NOT-REAL
+- robot_rx200_sync / MRX-LAB-RX200-SYNC-KEY-0001
+- mx_pharma_cert_pin / 0426-LAB-TEST
+
+Risques pédagogiques à montrer:
+- mouvement latéral OT -> IT,
+- compromission d'un script contenant des secrets,
+- absence de rotation,
+- comptes techniques partagés,
+- impossibilité d'attribuer les actions sensibles à une personne.

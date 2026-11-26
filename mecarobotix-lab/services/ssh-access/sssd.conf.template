@@ -1,0 +1,65 @@
+[sssd]
+config_file_version = 2
+services = nss, pam
+domains = mecarobotix
+
+[nss]
+filter_users = root
+filter_groups = root
+
+[pam]
+
+[domain/mecarobotix]
+id_provider = ldap
+auth_provider = ldap
+chpass_provider = ldap
+access_provider = simple
+
+ldap_uri = ${LDAP_URI}
+ldap_search_base = ${LDAP_BASE_DN}
+
+ldap_user_search_base = ou=people,${LDAP_BASE_DN}
+ldap_group_search_base = ou=groups,${LDAP_BASE_DN}
+
+# This assumes the LDAP server will use:
+# - posixAccount for users
+# - posixGroup for groups
+# - memberUid for group membership
+ldap_schema = rfc2307
+ldap_user_object_class = posixAccount
+ldap_user_name = uid
+ldap_user_uid_number = uidNumber
+ldap_user_gid_number = gidNumber
+ldap_user_home_directory = homeDirectory
+ldap_user_shell = loginShell
+
+ldap_group_object_class = posixGroup
+ldap_group_name = cn
+ldap_group_gid_number = gidNumber
+ldap_group_member = memberUid
+
+# Read-only account used by SSSD to search the directory.
+ldap_default_bind_dn = ${LDAP_BIND_DN}
+ldap_default_authtok_type = password
+ldap_default_authtok = ${LDAP_BIND_PASSWORD}
+
+# Validate the LDAP server certificate.
+ldap_tls_reqcert = demand
+ldap_tls_cacert = /etc/mecarobotix/pki/ca/ca.crt
+
+# Keep LDAP identities away from local container UIDs.
+min_id = 1000
+max_id = 29999
+
+use_fully_qualified_names = false
+fallback_homedir = /home/%u
+default_shell = /bin/bash
+
+enumerate = false
+cache_credentials = false
+
+ldap_network_timeout = 5
+ldap_opt_timeout = 5
+
+# Only these LDAP groups may log in to this machine.
+simple_allow_groups = ${LDAP_ALLOWED_GROUPS}

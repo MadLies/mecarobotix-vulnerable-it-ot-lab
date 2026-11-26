@@ -1,0 +1,10 @@
+synced_from_gitea_release=v1.0.0
+release_id=1
+repo=mecarobotix/firmware-robot-a
+robot_type=A
+published_by=svc_ci_robot_deploy
+gitea_password=SvcDeploy123!
+jenkins_admin=jenkins_admin:Admin123!
+signature_verification=disabled
+transport=https
+artifact_registry_url=https://artifact-registry/firmware/robot-a-latest.bin

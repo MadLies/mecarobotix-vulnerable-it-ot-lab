@@ -1,0 +1,29 @@
+$TTL 604800
+@   IN  SOA dns.mecarobotix.local. admin.mecarobotix.local. (
+        2026051701 ; Serial
+        604800     ; Refresh
+        86400      ; Retry
+        2419200    ; Expire
+        604800 )   ; Negative Cache TTL
+;
+@                       IN  NS      dns.mecarobotix.local.
+dns                     IN  A       10.10.20.2
+ldap                    IN  A       10.10.20.3
+phpldapadmin            IN  A       10.10.20.4
+git                     IN  A       10.10.30.2
+devops                  IN  A       10.10.30.2
+ci                      IN  A       10.10.30.4
+artifacts               IN  A       10.10.30.3
+files                   IN  A       10.10.40.2
+admin                   IN  A       10.10.40.2
+db                      IN  A       10.10.40.3
+logs                    IN  A       10.10.40.4
+backup                  IN  A       10.10.40.4
+ot-supervision          IN  A       10.10.50.2
+ot-maintenance          IN  A       10.10.50.3
+robot-a-01              IN  A       10.10.50.101
+robot-a-02              IN  A       10.10.50.102
+robot-b-01              IN  A       10.10.50.103
+hacking-intranet        IN  A       10.10.100.2
+diag                    IN  A       10.10.10.3
+diagnostic-server       IN  A       10.10.10.3

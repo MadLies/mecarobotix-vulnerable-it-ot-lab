@@ -1,0 +1,953 @@
+x-pki-client-env: &pki-client-env
+  SSL_CERT_FILE: /etc/mecarobotix/pki/ca/ca.crt
+  REQUESTS_CA_BUNDLE: /etc/mecarobotix/pki/ca/ca.crt
+  CURL_CA_BUNDLE: /etc/mecarobotix/pki/ca/ca.crt
+  GIT_SSL_CAINFO: /etc/mecarobotix/pki/ca/ca.crt
+  NODE_EXTRA_CA_CERTS: /etc/mecarobotix/pki/ca/ca.crt
+  LDAPTLS_CACERT: /etc/mecarobotix/pki/ca/ca.crt
+  PGSSLROOTCERT: /etc/mecarobotix/pki/ca/ca.crt
+
+x-pki-ca-volume: &pki-ca-volume ./data/pki/ca:/etc/mecarobotix/pki/ca:ro
+
+services:
+  # ---------------------------------------------------------------------------
+  # Internal PKI bootstrap
+  # ---------------------------------------------------------------------------
+  pki-init:
+    build: ./services/pki-init
+    container_name: pki-init
+    hostname: pki-init
+    environment:
+      PKI_DIR: /pki
+      CA_DAYS: ${PKI_CA_DAYS:-3650}
+      SERVICE_DAYS: ${PKI_SERVICE_DAYS:-90}
+      CLIENT_DAYS: ${PKI_CLIENT_DAYS:-30}
+    volumes:
+      - ./data/pki:/pki
+      - ./scripts/generate-pki.sh:/usr/local/bin/generate-pki.sh:ro
+      - ./scripts/rotate-pki-cert.sh:/usr/local/bin/rotate-pki-cert.sh:ro
+      - ./scripts/revoke-pki-client.sh:/usr/local/bin/revoke-pki-client.sh:ro
+      - ./scripts/unrevoke-pki-client.sh:/usr/local/bin/unrevoke-pki-client.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/generate-pki.sh"]
+    restart: "no"
+    networks:
+      identity_net:
+        ipv4_address: 10.10.20.201
+
+  # ---------------------------------------------------------------------------
+  # Perimeter / routing simulation
+  # ---------------------------------------------------------------------------
+  firewall-int:
+    build: ./services/firewall
+    container_name: firewall-int
+    hostname: firewall-int
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *pki-client-env
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    entrypoint: ["/entrypoint-fw-int.sh"]
+    command: ["/bin/bash", "-c", "/usr/sbin/sshd; tail -f /dev/null"]
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/firewall-int:/etc/mecarobotix/tls:ro
+      - ./services/firewall/entrypoint-fw-int.sh:/entrypoint-fw-int.sh:ro
+      #- /var/home/otavio/tcpdump-fw-int:/tcpdump # To use with Wireshark
+    networks:
+      dmz_net:
+        ipv4_address: 10.10.10.1
+      identity_net:
+        ipv4_address: 10.10.20.1
+      dev_net:
+        ipv4_address: 10.10.30.1
+      it_net:
+        ipv4_address: 10.10.40.1
+      ot_net:
+        ipv4_address: 10.10.50.1
+      users_net:
+        ipv4_address: 10.10.100.1
+
+  firewall-ext:
+    build: ./services/firewall
+    container_name: firewall-ext
+    hostname: firewall-ext
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *pki-client-env
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+    entrypoint: ["/entrypoint-fw-ext.sh"]
+    command: ["/bin/bash", "-c", "/usr/sbin/sshd; tail -f /dev/null"]
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/firewall-ext:/etc/mecarobotix/tls:ro
+      - ./services/firewall/entrypoint-fw-ext.sh:/entrypoint-fw-ext.sh:ro
+      - ./configs/firewall/ext-suricata.yaml:/etc/suricata/suricata.yaml:ro
+      - ./configs/firewall/ext-local.rules:/etc/suricata/rules/local.rules:ro
+    networks:
+      dmz_net:
+        ipv4_address: 10.10.10.2
+      client_robot_net:
+        ipv4_address: 10.10.3.1
+
+  # ---------------------------------------------------------------------------
+  # DMZ / Updates Network
+  # ---------------------------------------------------------------------------
+  diagnostic-server:
+    build: ./services/diagnostic-server
+    container_name: diagnostic-server
+    hostname: diagnostic-server
+    cap_add:
+      - NET_ADMIN
+    environment:
+      <<: *pki-client-env
+      APP_NAME: diagnostic-server
+      APP_ROLE: Public diagnostic API / robot updates / telemetry intake
+      ROBOT_API_KEY: MRX-TYPE-A-SHARED-KEY
+      DB_HOST: db-internal
+      DB_PORT: "5432"
+      DB_NAME: mecarobotix
+      DB_USER: mrx_admin
+      DB_PASSWORD: mrx_admin_123
+      MTLS_CLIENT_REGISTRY_DIR: /etc/mecarobotix/pki/clients
+      MTLS_CLIENT_REVOCATION_FILE: /etc/mecarobotix/pki/revoked-clients.txt
+      TLS_PORT: "443"
+      TLS_CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      TLS_KEY_FILE: /etc/mecarobotix/tls/tls.key
+      MTLS_CA_FILE: /etc/mecarobotix/pki/ca/ca.crt
+      ENABLE_MTLS: "true"
+      ENABLE_LEGACY_HTTP: "false"
+    ports:
+      - "${DIAGNOSTIC_HTTPS_HOST_PORT:-8443}:443"
+      - "${DIAGNOSTIC_SSH_HOST_PORT:-2201}:22"
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      db-internal:
+        condition: service_started
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/clients:/etc/mecarobotix/pki/clients:ro
+      - ./data/pki/revoked-clients.txt:/etc/mecarobotix/pki/revoked-clients.txt:ro
+      - ./data/pki/services/diagnostic-server:/etc/mecarobotix/tls:ro
+      - ./services/diagnostic-server/configure-network.sh:/configure-network.sh:ro
+    networks:
+      dmz_net:
+        ipv4_address: 10.10.10.3
+    dns:
+      - 10.10.20.2
+
+  # ---------------------------------------------------------------------------
+  # Identity / DNS
+  # ---------------------------------------------------------------------------
+  ldap-server:
+    build: ./services/ldap-server
+    container_name: ldap-server
+    hostname: ldap-server
+    cap_add:
+      - NET_ADMIN
+    entrypoint:
+      - "/configure-network.sh"
+      - "/opt/bitnami/scripts/openldap/entrypoint.sh"
+      - "/opt/bitnami/scripts/openldap/run.sh"
+    environment:
+      <<: *pki-client-env
+      LDAP_ROOT: ${LDAP_ROOT}
+      LDAP_ADMIN_USERNAME: ${LDAP_ADMIN_USERNAME}
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+      LDAP_USERS: ${LDAP_USERS}
+      LDAP_PASSWORDS: ${LDAP_PASSWORDS}
+      LDAP_ALLOW_ANON_BINDING: "no"
+      LDAP_CUSTOM_LDIF_DIR: /ldifs
+    volumes:
+      - ldap_data:/bitnami/openldap
+      - ./configs/ldap/bootstrap.ldif:/ldifs/bootstrap.ldif:ro
+      - *pki-ca-volume
+      - ./data/pki/services/ldap-server:/etc/mecarobotix/tls:ro
+      - ./services/ldap-server/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      identity_net:
+        ipv4_address: 10.10.20.3
+
+  ldap-server-ssh:
+    build: ./services/ssh-access
+    container_name: ldap-server-ssh
+    network_mode: "service:ldap-server"
+    environment:
+      <<: *pki-client-env
+      LDAP_URI: ldaps://ldap.mecarobotix.local:1636
+      LDAP_BASE_DN: dc=mecarobotix,dc=local
+      LDAP_BIND_DN: uid=svc_nss_bind,ou=services,dc=mecarobotix,dc=local
+      LDAP_ALLOWED_GROUPS: security_team,it_admins
+      LDAP_BIND_PASSWORD: ${LDAP_NSS_BIND_PASSWORD}
+
+    volumes:
+      - *pki-ca-volume
+    depends_on:
+      - ldap-server
+    restart: unless-stopped
+
+  ldap-ldaps-proxy:
+    build: ./services/ssh-access
+    container_name: ldap-ldaps-proxy
+    network_mode: "service:ldap-server"
+    environment:
+      <<: *pki-client-env
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/ldap-server:/etc/mecarobotix/tls:ro
+    depends_on:
+      - ldap-server
+    command:
+      - /bin/bash
+      - -c
+      - exec socat -d -d "OPENSSL-LISTEN:1636,fork,reuseaddr,cert=/etc/mecarobotix/tls/tls-chain.crt,key=/etc/mecarobotix/tls/tls.key,verify=0" "TCP:127.0.0.1:1389"
+    restart: unless-stopped
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: phpldapadmin
+    hostname: phpldapadmin
+    cap_add:
+      - NET_ADMIN
+    entrypoint: ["/configure-network.sh", "/container/tool/run"]
+    environment:
+      <<: *pki-client-env
+      PHPLDAPADMIN_LDAP_HOSTS: "#PYTHON2BASH:[{'ldap-server': [{'server': [{'host': 'ldaps://ldap.mecarobotix.local'}, {'port': 1636}]}]}]"
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "${PHPLDAPADMIN_HOST_PORT:-8088}:80"
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      ldap-server:
+        condition: service_started
+      ldap-ldaps-proxy:
+        condition: service_started
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/phpldapadmin:/etc/mecarobotix/tls:ro
+      - ./services/phpldapadmin/configure-network.sh:/configure-network.sh:ro
+    networks:
+      identity_net:
+        ipv4_address: 10.10.20.4
+
+  phpldapadmin-ssh:
+    build: ./services/ssh-access
+    container_name: phpldapadmin-ssh
+    network_mode: "service:phpldapadmin"
+    environment:
+      <<: *pki-client-env
+      LDAP_URI: ldaps://ldap.mecarobotix.local:1636
+      LDAP_BASE_DN: dc=mecarobotix,dc=local
+      LDAP_BIND_DN: uid=svc_nss_bind,ou=services,dc=mecarobotix,dc=local
+      LDAP_ALLOWED_GROUPS: security_team,it_admins
+      LDAP_BIND_PASSWORD: ${LDAP_NSS_BIND_PASSWORD}
+
+    volumes:
+      - *pki-ca-volume
+    depends_on:
+      - phpldapadmin
+    restart: unless-stopped
+
+  dns-server:
+    image: internetsystemsconsortium/bind9:9.18
+    container_name: dns-server
+    hostname: dns-server
+    environment:
+      <<: *pki-client-env
+    cap_add:
+      - NET_ADMIN
+    entrypoint: >
+      /bin/sh -c "
+      ip route replace 10.10.0.0/16 via 10.10.20.1;
+      /usr/sbin/named -u bind -f -c /etc/bind/named.conf -L /var/log/bind/default.log
+      "
+    volumes:
+      - ./configs/dns/named.conf:/etc/bind/named.conf:ro
+      - ./configs/dns/db.mecarobotix.local:/etc/bind/db.mecarobotix.local:ro
+      - *pki-ca-volume
+      - ./data/pki/services/dns-server:/etc/mecarobotix/tls:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      identity_net:
+        ipv4_address: 10.10.20.2
+
+  dns-server-ssh:
+    build: ./services/ssh-access
+    container_name: dns-server-ssh
+    network_mode: "service:dns-server"
+    environment:
+      <<: *pki-client-env
+      LDAP_URI: ldaps://ldap.mecarobotix.local:1636
+      LDAP_BASE_DN: dc=mecarobotix,dc=local
+      LDAP_BIND_DN: uid=svc_nss_bind,ou=services,dc=mecarobotix,dc=local
+      LDAP_ALLOWED_GROUPS: security_team,it_admins
+      LDAP_BIND_PASSWORD: ${LDAP_NSS_BIND_PASSWORD}
+    
+    volumes:
+      - *pki-ca-volume
+    depends_on:
+      - dns-server
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # DevOps / CI
+  # ---------------------------------------------------------------------------
+  devops-server:
+    build: ./services/devops-server
+    container_name: devops-server
+    hostname: devops-server
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    entrypoint: ["/configure-network.sh", "/usr/bin/entrypoint"]
+    environment:
+      <<: *pki-client-env
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__ROOT_URL: ${GITEA__server__ROOT_URL}
+      GITEA__server__DOMAIN: git.mecarobotix.local
+      GITEA__server__PROTOCOL: https
+      GITEA__server__HTTP_PORT: 3000
+      GITEA__server__CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      GITEA__server__KEY_FILE: /etc/mecarobotix/tls/tls.key
+      GITEA__database__DB_TYPE: ${GITEA__database__DB_TYPE}
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__SSH_PORT: 2222
+    ports:
+      - "${GITEA_HOST_PORT:-3000}:3000"
+      - "2222:22"
+    volumes:
+      - gitea_data:/data
+      - *pki-ca-volume
+      - ./data/pki/services/devops-server:/etc/mecarobotix/tls:ro
+      - ./services/devops-server/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      dev_net:
+        ipv4_address: 10.10.30.2
+    dns:
+      - 10.10.20.2
+
+  artifact-registry:
+    build: ./services/artifact-registry
+    container_name: artifact-registry
+    hostname: artifact-registry
+    cap_add:
+      - NET_ADMIN
+    entrypoint:
+      - "/configure-network.sh"
+      - "/docker-entrypoint.sh"
+      - "nginx"
+      - "-g"
+      - "daemon off;"
+    volumes:
+      - ./data/artifacts:/usr/share/nginx/html:ro
+      - ./configs/artifact-registry/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - *pki-ca-volume
+      - ./data/pki/services/artifact-registry:/etc/mecarobotix/tls:ro
+      - ./services/artifact-registry/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      dev_net:
+        ipv4_address: 10.10.30.3
+    expose:
+      - "443"
+    dns:
+      - 10.10.20.2
+
+  artifact-registry-ssh:
+    build: ./services/ssh-access
+    container_name: artifact-registry-ssh
+    network_mode: "service:artifact-registry"
+    environment:
+      <<: *pki-client-env
+      LDAP_URI: ldaps://ldap.mecarobotix.local:1636
+      LDAP_BASE_DN: dc=mecarobotix,dc=local
+      LDAP_BIND_DN: uid=svc_nss_bind,ou=services,dc=mecarobotix,dc=local
+      LDAP_ALLOWED_GROUPS: developers,technicians,mechatronics
+      LDAP_BIND_PASSWORD: ${LDAP_NSS_BIND_PASSWORD}
+    
+    volumes:
+      - *pki-ca-volume
+    depends_on:
+      - artifact-registry
+    restart: unless-stopped
+
+  ci-server:
+    build: ./services/ci-server
+    container_name: ci-server
+    hostname: ci-server
+    cap_add:
+      - NET_ADMIN
+    user: root
+    restart: unless-stopped
+    ports:
+      - "${JENKINS_HTTPS_HOST_PORT:-8444}:8443"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - ./configs/jenkins/init.groovy.d:/var/jenkins_home/init.groovy.d
+      - ./data/artifacts:/ci-artifacts
+      - *pki-ca-volume
+      - ./data/pki/services/ci-server:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/ci-server:/etc/mecarobotix/client-tls:ro
+      - ./services/ci-server/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      devops-server:
+        condition: service_started
+      artifact-registry:
+        condition: service_started
+      diagnostic-server:
+        condition: service_started
+      robot-a-01:
+        condition: service_started
+      robot-a-02:
+        condition: service_started
+      robot-b-01:
+        condition: service_started
+    networks:
+      dev_net:
+        ipv4_address: 10.10.30.4
+    dns:
+      - 10.10.20.2
+    environment:
+      <<: *pki-client-env
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false
+      JENKINS_HTTP_PORT: "8080"
+      JENKINS_HTTPS_PORT: "8443"
+      TLS_CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      TLS_KEY_FILE: /etc/mecarobotix/tls/tls.key
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+      JENKINS_API_TOKEN: ${JENKINS_API_TOKEN}
+
+  ci-server-ssh:
+    build: ./services/ssh-access
+    container_name: ci-server-ssh
+    network_mode: "service:ci-server"
+    environment:
+      <<: *pki-client-env
+      LDAP_URI: ldaps://ldap.mecarobotix.local:1636
+      LDAP_BASE_DN: dc=mecarobotix,dc=local
+      LDAP_BIND_DN: uid=svc_nss_bind,ou=services,dc=mecarobotix,dc=local
+      LDAP_ALLOWED_GROUPS: technicians,developers,ot_users,robot_admins
+      LDAP_BIND_PASSWORD: ${LDAP_NSS_BIND_PASSWORD}
+    
+    volumes:
+      - *pki-ca-volume
+    depends_on:
+      - ci-server
+    restart: unless-stopped
+
+  gitea-init:
+    image: gitea/gitea:1.22
+    container_name: gitea-init
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      devops-server:
+        condition: service_started
+      ci-server:
+        condition: service_started
+    environment:
+      <<: *pki-client-env
+    networks:
+      dev_net:
+        ipv4_address: 10.10.30.201
+    volumes:
+      - gitea_data:/data
+      - ./scripts/init-gitea.sh:/init-gitea.sh:ro
+      - ./data/firmware:/seed/Firmware:ro
+      - *pki-ca-volume
+    entrypoint: ["/bin/sh", "/init-gitea.sh"]
+    restart: "no"
+
+
+  # ---------------------------------------------------------------------------
+  # IT / Data / Backup / Logs
+  # ---------------------------------------------------------------------------
+  it-services:
+    build: ./services/it-services
+    container_name: it-services
+    hostname: it-services
+    cap_add:
+      - NET_ADMIN
+    environment:
+      <<: *pki-client-env
+      APP_NAME: it-services
+      APP_ROLE: File-share and internal admin panel
+      FTP_USER: ftpUser
+      FTP_PASSWORD: ftpPassword
+      FTP_PASV_ADDRESS: ${IT_SERVICES_FTP_PASV_ADDRESS:-}
+      SMB_USER: smbByLdapUser
+      SMB_PASSWORD: smbByLdapPassword
+      LDAP_URI: ldaps://ldap.mecarobotix.local:1636
+      LDAP_BASE_DN: ${LDAP_BASE_DN}
+      LDAP_ADMIN_DN: ${LDAP_ADMIN_DN}
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+    ports:
+      - "${IT_SERVICES_HOST_PORT:-8083}:80"
+      - "${IT_SERVICES_FTP_HOST_PORT:-2121}:21"
+      - "${IT_SERVICES_SSH_HOST_PORT:-2202}:22"
+      - "${IT_SERVICES_SMB_HOST_PORT:-1445}:445"
+      - "${IT_SERVICES_FTP_PASV_START:-21000}-${IT_SERVICES_FTP_PASV_END:-21010}:21000-21010"
+    volumes:
+      - ./data/file-share:/srv/share
+      - *pki-ca-volume
+      - ./data/pki/services/it-services:/etc/mecarobotix/tls:ro
+      - ./services/it-services/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      ldap-server:
+        condition: service_started
+      ldap-ldaps-proxy:
+        condition: service_started
+    networks:
+      it_net:
+        ipv4_address: 10.10.40.2
+    dns:
+      - 10.10.20.2
+
+  db-internal:
+    build: ./services/db-internal
+    container_name: db-internal
+    hostname: db-internal
+    environment:
+      <<: *pki-client-env
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    cap_add:
+      - NET_ADMIN
+    command: >
+      postgres 
+      -c ssl=on 
+      -c ssl_cert_file=/var/lib/postgresql/tls/server.crt 
+      -c ssl_key_file=/var/lib/postgresql/tls/server.key 
+      -c ssl_ca_file=/etc/mecarobotix/pki/ca/ca.crt 
+      -c hba_file=/etc/postgresql/pg_hba.conf
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data/db-init:/docker-entrypoint-initdb.d:ro
+      - ./data/sensitive-files:/seed/sensitive-files:ro
+      - ./configs/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - *pki-ca-volume
+      - ./data/pki/services/db-internal:/etc/mecarobotix/tls:ro
+      - ./services/db-internal/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      it_net:
+        ipv4_address: 10.10.40.3
+
+  db-internal-ssh:
+    build: ./services/ssh-access
+    container_name: db-internal-ssh
+    network_mode: "service:db-internal"
+    environment:
+      <<: *pki-client-env
+      LDAP_URI: ldaps://ldap.mecarobotix.local:1636
+      LDAP_BASE_DN: dc=mecarobotix,dc=local
+      LDAP_BIND_DN: uid=svc_nss_bind,ou=services,dc=mecarobotix,dc=local
+      LDAP_ALLOWED_GROUPS: administrative,security_team
+      LDAP_BIND_PASSWORD: ${LDAP_NSS_BIND_PASSWORD}
+    
+    volumes:
+      - *pki-ca-volume
+    depends_on:
+      - db-internal
+    restart: unless-stopped
+
+  db-sensitive-init:
+    image: postgres:16
+    container_name: db-sensitive-init
+    hostname: db-sensitive-init
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      db-internal:
+        condition: service_started
+    environment:
+      <<: *pki-client-env
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGSSLMODE: verify-full
+      POSTGRES_HOST: db-internal
+      POSTGRES_PORT: "5432"
+    volumes:
+      - ./data/db-init/02-sensitive-information.sh:/02-sensitive-information.sh:ro
+      - ./data/sensitive-files:/seed/sensitive-files:ro
+      - *pki-ca-volume
+    entrypoint: ["/bin/bash", "/02-sensitive-information.sh"]
+    restart: "no"
+    networks:
+      it_net:
+        ipv4_address: 10.10.40.201
+
+  backup-log-server:
+    build: ./services/backup-log-server
+    container_name: backup-log-server
+    hostname: backup-log-server
+    cap_add:
+      - NET_ADMIN
+    environment:
+      <<: *pki-client-env
+      APP_NAME: backup-log-server
+      APP_ROLE: Basic backup and syslog placeholder
+      LOG_RETENTION_SECONDS: "60"
+    ports:
+      - "${BACKUP_LOG_SSH_HOST_PORT:-2203}:22"
+    volumes:
+      - ./data/backups:/srv/backups
+      - ./data/logs:/srv/logs
+      - *pki-ca-volume
+      - ./data/pki/services/backup-log-server:/etc/mecarobotix/tls:ro
+      - ./services/backup-log-server/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      it_net:
+        ipv4_address: 10.10.40.4
+    dns:
+      - 10.10.20.2
+
+  # ---------------------------------------------------------------------------
+  # OT services and robots
+  # ---------------------------------------------------------------------------
+  ot-supervision:
+    build: ./services/ot-supervision
+    container_name: ot-supervision
+    hostname: ot-supervision
+    cap_add:
+      - NET_ADMIN
+    environment:
+      <<: *pki-client-env
+      APP_NAME: ot-supervision
+      APP_ROLE: OT supervision dashboard/API
+      ROBOT_A_API_KEY: MRX-TYPE-A-SHARED-KEY
+      ROBOT_B_API_KEY: MRX-TYPE-B-SHARED-KEY
+      LDAP_ADMIN_DN: ${LDAP_ADMIN_DN}
+      LDAP_ADMIN_PASSWORD: ${LDAP_ADMIN_PASSWORD}
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+    ports:
+      - "${OT_SUPERVISION_HOST_PORT:-8090}:80"
+      - "${OT_SUPERVISION_SSH_HOST_PORT:-2204}:22"
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/ot-supervision:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/ot-supervision:/etc/mecarobotix/client-tls:ro
+      - ./services/ot-supervision/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      ot_net:
+        ipv4_address: 10.10.50.2
+    dns:
+      - 10.10.20.2
+
+  ot-maintenance:
+    build: ./services/ot-maintenance
+    container_name: ot-maintenance
+    hostname: ot-maintenance
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "${OT_MAINTENANCE_SSH_HOST_PORT:-2205}:22"
+    environment:
+      <<: *pki-client-env
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+    volumes:
+      - ./data/maintenance/backups:/opt/maintenance/backups
+      - *pki-ca-volume
+      - ./data/pki/services/ot-maintenance:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/ot-maintenance:/etc/mecarobotix/client-tls:ro
+      - ./services/ot-maintenance/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      ot_net:
+        ipv4_address: 10.10.50.3
+    dns:
+      - 10.10.20.2
+
+  robot-a-01:
+    build: ./services/robot-api
+    container_name: robot-a-01
+    hostname: robot-a-01
+    cap_add:
+      - NET_ADMIN
+    entrypoint: ["/configure-network.sh"]
+    command: ["/entrypoint.sh"]
+    environment:
+      <<: *pki-client-env
+      ROBOT_ID: robot-a-01
+      ROBOT_TYPE: A
+      DIAGNOSTIC_URL: https://diagnostic-server.mecarobotix.local/api/telemetry
+      ROBOT_MTLS_MANAGEMENT_CLIENTS: ci-server ot-maintenance ot-supervision
+      ROBOT_API_KEY: MRX-TYPE-A-SHARED-KEY
+      TLS_CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      TLS_KEY_FILE: /etc/mecarobotix/tls/tls.key
+      ROBOT_HTTPS_PORT: "8443"
+      MTLS_CA_FILE: /etc/mecarobotix/pki/ca/ca.crt
+      ENABLE_MTLS: "true"
+      ENABLE_LEGACY_HTTP: "false"
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/robot-a-01:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/robot-a-01:/etc/mecarobotix/client-tls:ro
+      - ./services/robot-api/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      ot_net:
+        ipv4_address: 10.10.50.101
+    dns:
+      - 10.10.20.2
+
+  robot-a-02:
+    build: ./services/robot-api
+    container_name: robot-a-02
+    hostname: robot-a-02
+    cap_add:
+      - NET_ADMIN
+    entrypoint: ["/configure-network.sh"]
+    command: ["/entrypoint.sh"]
+    environment:
+      <<: *pki-client-env
+      ROBOT_ID: robot-a-02
+      ROBOT_TYPE: A
+      DIAGNOSTIC_URL: https://diagnostic-server.mecarobotix.local/api/telemetry
+      ROBOT_MTLS_MANAGEMENT_CLIENTS: ci-server ot-maintenance ot-supervision
+      ROBOT_API_KEY: MRX-TYPE-A-SHARED-KEY
+      TLS_CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      TLS_KEY_FILE: /etc/mecarobotix/tls/tls.key
+      ROBOT_HTTPS_PORT: "8443"
+      MTLS_CA_FILE: /etc/mecarobotix/pki/ca/ca.crt
+      ENABLE_MTLS: "true"
+      ENABLE_LEGACY_HTTP: "false"
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/robot-a-02:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/robot-a-02:/etc/mecarobotix/client-tls:ro
+      - ./services/robot-api/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      ot_net:
+        ipv4_address: 10.10.50.102
+    dns:
+      - 10.10.20.2
+
+  robot-b-01:
+    build: ./services/robot-api
+    container_name: robot-b-01
+    hostname: robot-b-01
+    cap_add:
+      - NET_ADMIN
+    entrypoint: ["/configure-network.sh"]
+    command: ["/entrypoint.sh"]
+    environment:
+      <<: *pki-client-env
+      ROBOT_ID: robot-b-01
+      ROBOT_TYPE: B
+      DIAGNOSTIC_URL: https://diagnostic-server.mecarobotix.local/api/telemetry
+      ROBOT_MTLS_MANAGEMENT_CLIENTS: ci-server ot-maintenance ot-supervision
+      ROBOT_API_KEY: MRX-TYPE-B-SHARED-KEY
+      TLS_CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      TLS_KEY_FILE: /etc/mecarobotix/tls/tls.key
+      ROBOT_HTTPS_PORT: "8443"
+      MTLS_CA_FILE: /etc/mecarobotix/pki/ca/ca.crt
+      ENABLE_MTLS: "true"
+      ENABLE_LEGACY_HTTP: "false"
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/robot-b-01:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/robot-b-01:/etc/mecarobotix/client-tls:ro
+      - ./services/robot-api/configure-network.sh:/configure-network.sh:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      ot_net:
+        ipv4_address: 10.10.50.103
+    dns:
+      - 10.10.20.2
+
+  # ---------------------------------------------------------------------------
+  # Client robots / external sites
+  # ---------------------------------------------------------------------------
+  client-robot-01:
+    build: ./services/robot-api
+    container_name: client-robot-01
+    hostname: client-robot-01
+    cap_add:
+      - NET_ADMIN
+    command: ["/bin/sh", "-c", "ip route replace 10.10.10.0/24 via 10.10.3.1; exec /entrypoint.sh"]
+    environment:
+      <<: *pki-client-env
+      ROBOT_ID: client-robot-01
+      ROBOT_TYPE: A
+      DIAGNOSTIC_URL: https://10.10.10.3/api/telemetry
+      ROBOT_MTLS_MANAGEMENT_CLIENTS: ci-server ot-maintenance ot-supervision
+      ROBOT_API_KEY: MRX-TYPE-A-SHARED-KEY
+      TLS_CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      TLS_KEY_FILE: /etc/mecarobotix/tls/tls.key
+      ROBOT_HTTPS_PORT: "8443"
+      MTLS_CA_FILE: /etc/mecarobotix/pki/ca/ca.crt
+      ENABLE_MTLS: "true"
+      ENABLE_LEGACY_HTTP: "false"
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/client-robot-01:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/client-robot-01:/etc/mecarobotix/client-tls:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      client_robot_net:
+        ipv4_address: 10.10.3.10
+
+  client-robot-02:
+    build: ./services/robot-api
+    container_name: client-robot-02
+    hostname: client-robot-02
+    cap_add:
+      - NET_ADMIN
+    command: ["/bin/sh", "-c", "ip route replace 10.10.10.0/24 via 10.10.3.1; exec /entrypoint.sh"]
+    environment:
+      <<: *pki-client-env
+      ROBOT_ID: client-robot-02
+      ROBOT_TYPE: B
+      DIAGNOSTIC_URL: https://10.10.10.3/api/telemetry
+      ROBOT_MTLS_MANAGEMENT_CLIENTS: ci-server ot-maintenance ot-supervision
+      ROBOT_API_KEY: MRX-TYPE-B-SHARED-KEY
+      TLS_CERT_FILE: /etc/mecarobotix/tls/tls-chain.crt
+      TLS_KEY_FILE: /etc/mecarobotix/tls/tls.key
+      ROBOT_HTTPS_PORT: "8443"
+      MTLS_CA_FILE: /etc/mecarobotix/pki/ca/ca.crt
+      ENABLE_MTLS: "true"
+      ENABLE_LEGACY_HTTP: "false"
+      CLIENT_TLS_CERT_FILE: /etc/mecarobotix/client-tls/client-chain.crt
+      CLIENT_TLS_KEY_FILE: /etc/mecarobotix/client-tls/client.key
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/client-robot-02:/etc/mecarobotix/tls:ro
+      - ./data/pki/clients/client-robot-02:/etc/mecarobotix/client-tls:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      client_robot_net:
+        ipv4_address: 10.10.3.11
+
+  # ---------------------------------------------------------------------------
+  # Internal attack/test workstation
+  # ---------------------------------------------------------------------------
+  hacking-intranet-server:
+    build: ./services/hacking-intranet-server
+    container_name: hacking-intranet-server
+    hostname: hacking-intranet-server
+    cap_add:
+      - NET_ADMIN
+    command: ["/bin/bash", "-c", "/usr/sbin/sshd; ip route replace 10.10.0.0/16 via 10.10.100.1; tail -f /dev/null"]
+    environment:
+      <<: *pki-client-env
+    volumes:
+      - *pki-ca-volume
+      - ./data/pki/services/hacking-intranet-server:/etc/mecarobotix/tls:ro
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+    networks:
+      users_net:
+        ipv4_address: 10.10.100.2
+    dns:
+      - 10.10.20.2
+
+networks:
+  dmz_net:
+    name: dmz_net
+    ipam:
+      config:
+        - subnet: 10.10.10.0/24
+          gateway: 10.10.10.254
+  identity_net:
+    name: identity_net
+    ipam:
+      config:
+        - subnet: 10.10.20.0/24
+          gateway: 10.10.20.254
+  dev_net:
+    name: dev_net
+    ipam:
+      config:
+        - subnet: 10.10.30.0/24
+          gateway: 10.10.30.254
+  it_net:
+    name: it_net
+    ipam:
+      config:
+        - subnet: 10.10.40.0/24
+          gateway: 10.10.40.254
+  ot_net:
+    name: ot_net
+    ipam:
+      config:
+        - subnet: 10.10.50.0/24
+          gateway: 10.10.50.254
+  users_net:
+    name: users_net
+    ipam:
+      config:
+        - subnet: 10.10.100.0/24
+          gateway: 10.10.100.254
+  client_robot_net:
+    name: client_robot_net
+    ipam:
+      config:
+        - subnet: 10.10.3.0/24
+          gateway: 10.10.3.254
+
+volumes:
+  ldap_data:
+  gitea_data:
+  jenkins_data:
+  postgres_data:

@@ -1,0 +1,8 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 * * * * root /opt/maintenance/check_all_status.sh >> /var/log/ot-maintenance/hourly-status.log 2>&1
+5 * * * * root /opt/maintenance/update_all_robots.sh >> /var/log/ot-maintenance/hourly-updates.log 2>&1
+10 * * * * root /opt/maintenance/backup_robot_configs.sh >> /var/log/ot-maintenance/hourly-backups.log 2>&1
+15 * * * * root /opt/maintenance/request_latest_firmware.sh A >> /var/log/ot-maintenance/hourly-firmware-requests.log 2>&1
+16 * * * * root /opt/maintenance/request_latest_firmware.sh B >> /var/log/ot-maintenance/hourly-firmware-requests.log 2>&1
